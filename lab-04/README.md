@@ -1,205 +1,155 @@
-# Lab 04 - Pods
+# Lab 04 - Deployments
 
-In this lab we will run our first, very basic, application on Kubernetes.  We
-will basically run a single pod as our application.
+Deploying pods is not something you normally do when working with Kubernetes,
+instead of interacting with pods directly you would use a higher lever
+construct.  Deployments are such a higher level construct, they are usually the
+way you would describe your applications.
 
-## Task 1: Creating a namespace
+## Task 1: Creating a deployment
 
-Create a namespace for this lab:
+A very basic deployment looks like this:
 
 ```
-kubectl create ns lab-04
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: container-info
+  labels:
+    app: container-info
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: container-info
+  template:
+    metadata:
+      labels:
+        app: container-info
+    spec:
+      containers:
+      - name: container-info
+        image: gluobe/container-info:blue
+        ports:
+        - containerPort: 80
+```
+
+Copy the above into a file `lab-04-deployment.yml` and `kubectl apply` it:
+
+```
+kubectl apply -f lab-04-deployment.yml
 
 ---
 
-namespace "lab-04" created
+deployment.apps/container-info created
 ```
 
-Verify that your namespace was created:
+Use `kubectl port-forward` to see the deployed application in your local
+browser (NOTE: as we are forwarding a deployment we are using `deployment/*` 
+instead of `pod/*` like we used in a previous lab):
 
 ```
-kubectl get namespaces
+kubectl port-forward deployment/container-info 8080:80
 
 ---
 
-NAME             STATUS    AGE
-default          Active    1h
-kube-public      Active    1h
-kube-system      Active    1h
-lab-04           Active    7s
+Forwarding from 127.0.0.1:8080 -> 80
+Forwarding from [::1]:8080 -> 80
 ```
 
-## Task 2: Starting your first pod
+Check out the page: http://localhost:8080
 
-To run your first pod (the official nginx container image), run the following
-command:
+![container-info blue](images/lab-04-container-info.png)
+
+Kill the `kubectl port-forward` process by pressing `CTRL+c`.
+
+## Task 2: Scaling a deployment
+
+Because we are using a deployment we can very easily scale our application from
+a Kubernetes point of view (you of course need to ensure that your application
+is stateless so it can properly scale).
+
+Scaling your running application is as simple as:
 
 ```
-kubectl run --restart=Never --image=nginx  nginx -n lab-04
+kubectl scale deployment container-info --replicas=2
 
 ---
 
-pod "nginx" created
+deployment.extensions "container-info" scaled
 ```
 
-The above command will create a single pod that is based on the official nginx
-container image.  Run the following command to verify that the pod has been
-created and is in the running state (if the pod is not yet in the running state
-wait a couple of seconds and try to run the command again):
+When you do a `kubectl get pods` quickly enough you will see that 
+there is an additional container-info pods being created (if you are not fast 
+enough you will see them in the `Running` state already).
 
 ```
-kubectl get pods -n lab-04
+kubectl get pods
 
 ---
 
-NAME      READY     STATUS    RESTARTS   AGE
-nginx     1/1       Running   0          22s
+NAME                              READY   STATUS    RESTARTS   AGE
+container-info-6d9747978f-5n6z9   1/1     Running   0          26m
+container-info-6d9747978f-ndl6n   1/1     Running   0          4s
 ```
 
-As we have not yet configured any services and/or ingresses we will use a litte
-"hack" to access our pod we just created.
-
-Run the following command to forward the port of the pod (in our case port 80)
-running in our Kubernetes cluster to a port on your laptop (in this case port
-8080).
+Scaling down to 1 can be done by re-applying the original YAML:
 
 ```
-kubectl port-forward pod/nginx 8080:80 -n lab-04
+kubectl apply -f lab-04-deployment.yml
 ```
 
-> NOTE: your prompt will be locked by the port-forward process
-
-Now go to your browser and surf to http://localhost:8080, you should be greeted
-with the default nginx welcome page:
-
-![nginx welcome page](images/lab-04-nginx-welcome-page.png)
-
-If that works you can close the port-foward connection by pressing `CTRL+c`.
-
-## Task 3: Connecting to your pod
-
-To connect to your pod, you can use the following command (notice how it
-resembles the `podman container exec` command in options and functionality):
+When you do a `kubectl get pods` you will see one of the replicas is being terminated:
 
 ```
-kubectl exec -ti nginx -n lab-04 -- bash
+kubectl get pods
 
 ---
 
-root@nginx:/#
+NAME                              READY   STATUS        RESTARTS   AGE
+container-info-6d9747978f-5n6z9   1/1     Running       0          27m
+container-info-6d9747978f-ndl6n   0/1     Terminating   0          85s
 ```
 
-Notice how the prompt changes.  `exec`-ing into a pod is very powerful for
-troubleshooting, but keep in mind that by default pods/containers are immutable
-so remember to not make any changes inside the pods/container.
+> NOTE: similarly, scaling up can also be done by editing the "replica" field in 
+> the YAML
 
-To exit run the `exit` command.
+## Task 3: Changing the image of a deployment
 
-```
-exit
-```
-
-## Task 4: Pod logs
-
-Again similar to when working with Podman containers, Kubernetes has a built-in
-feature that exposes all stdout/stderr output into logs.  To access those logs
-issue the following command:
+Updating the image (tag) of a deployment is just as easy as scaling a deployment
+and it also can be done using the CLI or by editing the YAML.
 
 ```
-kubectl logs nginx -n lab-04
-
----
-
-127.0.0.1 - - [11/Mar/2019:11:40:47 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.52.1" "-"
-127.0.0.1 - - [11/Mar/2019:11:40:48 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.52.1" "-"
-127.0.0.1 - - [11/Mar/2019:11:40:49 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.52.1" "-"
-127.0.0.1 - - [11/Mar/2019:11:40:50 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.52.1" "-"
+kubectl set image deployment container-info container-info=gluobe/container-info:green
 ```
 
-> NOTE: if your logs are empty, repeat Task 2 where you `kubectl port-forward` 
-> the container port and hit reload the page a couple more times in your 
-> browser
-
-A very handy option of `kubectl logs` is that you can follow them using the `-f`
-option, this is extremely useful when troubleshooting:
+Or simply edit the YAML and `kubectl apply` it again:
 
 ```
-kubectl logs nginx -n lab-04 -f
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: container-info
+  labels:
+    app: container-info
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: container-info
+  template:
+    metadata:
+      labels:
+        app: container-info
+    spec:
+      containers:
+      - name: container-info
+        image: gluobe/container-info:green
+        ports:
+        - containerPort: 80
 ```
 
-Hit `CTRL+c` to exit the logs.
+Open the application again using port forwarding, the box should be green now.
 
-## Task 5: Getting pod details
+## Task 4: Cleaning up
 
-Like with most objects in Kubernetes you can use the `kubectl describe` command 
-to get more information about a specific pod, for example:
-
-```
-kubectl describe pods nginx -n lab-04
-
----
-
-Name:         nginx
-Namespace:    lab-04
-Priority:     0
-Node:         minikube/10.0.2.15
-Start Time:   Thu, 29 Aug 2019 11:23:56 +0200
-Labels:       run=nginx
-Annotations:  <none>
-Status:       Running
-IP:           172.17.0.2
-Containers:
-  nginx:
-    Container ID:   docker://185da953fb9332cdbaa3516f2240255a6fddc8538f58a277d2f826a469bd6f26
-    Image:          nginx
-    Image ID:       docker-pullable://nginx@sha256:aeded0f2a861747f43a01cf1018cf9efe2bdd02afd57d2b11fcc7fcadc16ccd1
-    Port:           <none>
-    Host Port:      <none>
-    State:          Running
-      Started:      Thu, 26 Sep 2019 11:45:15 +0200
-    Last State:     Terminated
-      Reason:       Error
-      Exit Code:    255
-      Started:      Fri, 30 Aug 2019 14:46:25 +0200
-      Finished:     Thu, 26 Sep 2019 11:42:56 +0200
-    Ready:          True
-    Restart Count:  2
-    Environment:    <none>
-    Mounts:
-      /var/run/secrets/kubernetes.io/serviceaccount from default-token-4hztg (ro)
-Conditions:
-  Type              Status
-  Initialized       True
-  Ready             True
-  ContainersReady   True
-  PodScheduled      True
-Volumes:
-  default-token-4hztg:
-    Type:        Secret (a volume populated by a Secret)
-    SecretName:  default-token-4hztg
-    Optional:    false
-QoS Class:       BestEffort
-Node-Selectors:  <none>
-Tolerations:     node.kubernetes.io/not-ready:NoExecute for 300s
-                 node.kubernetes.io/unreachable:NoExecute for 300s
-Events:
-  Type    Reason          Age   From               Message
-  ----    ------          ----  ----               -------
-  Normal  SandboxChanged  30m   kubelet, minikube  Pod sandbox changed, it will be killed and re-created.
-  Normal  Pulling         30m   kubelet, minikube  Pulling image "nginx"
-  Normal  Pulled          30m   kubelet, minikube  Successfully pulled image "nginx"
-  Normal  Created         30m   kubelet, minikube  Created container nginx
-  Normal  Started         30m   kubelet, minikube  Started container nginx
-```
-
-## Task 6: Cleaning up
-
-Clean up the namespace for this lab:
-
-```
-kubectl delete ns lab-04
-
----
-
-namespace "lab-04" deleted
-```
+Ensure that your deployments are cleaned up, either by deleting them directly, or by deleting them using their YAML resource file.

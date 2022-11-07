@@ -1,155 +1,181 @@
-# Lab 02 - Nodes
+# Lab 02 - Pods
 
-A node is a worker machine in Kubernetes, previously known as a minion. A node
-may be a VM or physical machine, depending on the cluster.  A node is where your 
-application containers will run.
+In this lab we will run our first, very basic, application on Kubernetes.  We
+will basically run a single pod as our application.
 
-Each node contains the services necessary to run pods and is managed by the 
-master components. The services on a node include the container runtime, kubelet 
-and kube-proxy.
+## Task 1: Starting your first pod
 
-## Task 1: Listing nodes
-
-To see which nodes are part of your Kubernetes cluster run the
-`kubectl get nodes` command:
+To run your first pod (the official nginx container image), run the following
+command:
 
 ```
-kubectl get nodes
+kubectl run --restart=Never --image=nginx  nginx
 
 ---
 
-NAME       STATUS   ROLES    AGE   VERSION
-minikube   Ready    master   77d   v1.16.0
+pod "nginx" created
 ```
 
-As we are using minikube we only have a single node.  Below is the output of a
-3 node cluster:
+The above command will create a single pod that is based on the official nginx
+container image.  Run the following command to verify that the pod has been
+created and is in the running state (if the pod is not yet in the running state
+wait a couple of seconds and try to run the command again):
 
 ```
-kubectl get nodes
+kubectl get pods
 
 ---
 
-NAME                                        STATUS    ROLES     AGE       VERSION
-gke-kbc-steven-default-pool-b82ee1c9-5n9j   Ready     <none>    20m       v1.11.7-gke.4
-gke-kbc-steven-default-pool-b82ee1c9-6wnx   Ready     <none>    20m       v1.11.7-gke.4
-gke-kbc-steven-default-pool-b82ee1c9-x13z   Ready     <none>    20m       v1.11.7-gke.4
+NAME      READY     STATUS    RESTARTS   AGE
+nginx     1/1       Running   0          22s
 ```
 
-We can use the `kubectl get nodes -o wide` command to get some additional
-information about the nodes:
+As we have not yet configured any services and/or ingresses we will use a litte
+"hack" to access our pod we just created.
+
+Run the following command to forward the port of the pod (in our case port 80)
+running in our Kubernetes cluster to a port on your laptop (in this case port
+8080).
 
 ```
-kubectl get nodes -o wide
+kubectl port-forward pod/nginx 8080:80
+```
+
+> NOTE: your prompt will be locked by the port-forward process
+
+Now go to your browser and surf to http://localhost:8080, you should be greeted
+with the default nginx welcome page:
+
+![nginx welcome page](images/lab-02-nginx-welcome-page.png)
+
+If that works you can close the port-foward connection by pressing `CTRL+c`.
+
+## Task 3: Connecting to your pod
+
+To connect to your pod, you can use the following command (notice how it
+resembles the `podman container exec` command in options and functionality):
+
+```
+kubectl exec -ti nginx -- bash
 
 ---
 
-NAME       STATUS   ROLES    AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE            KERNEL-VERSION   CONTAINER-RUNTIME
-minikube   Ready    master   77d   v1.16.0   10.0.2.15     <none>        Buildroot 2018.05   4.15.0           docker://18.9.6
+root@nginx:/#
 ```
 
-## Task 2: Getting detailed node information
+Notice how the prompt changes.  `exec`-ing into a pod is very powerful for
+troubleshooting, but keep in mind that by default pods/containers are immutable
+so remember to not make any changes inside the pods/container.
 
-If we want more detailed information about a node we have to use the
-`kubectl describe nodes <node_name>` command, for example:
+To exit run the `exit` command.
 
 ```
-kubectl describe nodes minikube
+exit
+```
+
+## Task 4: Pod logs
+
+Again similar to when working with Podman containers, Kubernetes has a built-in
+feature that exposes all stdout/stderr output into logs.  To access those logs
+issue the following command:
+
+```
+kubectl logs nginx
 
 ---
 
-Name:               minikube
-Roles:              master
-Labels:             beta.kubernetes.io/arch=amd64
-                    beta.kubernetes.io/os=linux
-                    kubernetes.io/arch=amd64
-                    kubernetes.io/hostname=minikube
-                    kubernetes.io/os=linux
-                    node-role.kubernetes.io/master=
-Annotations:        kubeadm.alpha.kubernetes.io/cri-socket: /var/run/dockershim.sock
-                    node.alpha.kubernetes.io/ttl: 0
-                    volumes.kubernetes.io/controller-managed-attach-detach: true
-CreationTimestamp:  Wed, 10 Jul 2019 13:29:48 +0200
-Taints:             <none>
-Unschedulable:      false
+127.0.0.1 - - [11/Mar/2019:11:40:47 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.52.1" "-"
+127.0.0.1 - - [11/Mar/2019:11:40:48 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.52.1" "-"
+127.0.0.1 - - [11/Mar/2019:11:40:49 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.52.1" "-"
+127.0.0.1 - - [11/Mar/2019:11:40:50 +0000] "GET / HTTP/1.1" 200 612 "-" "curl/7.52.1" "-"
+```
+
+> NOTE: if your logs are empty, repeat Task 2 where you `kubectl port-forward` 
+> the container port and hit reload the page a couple more times in your 
+> browser
+
+A very handy option of `kubectl logs` is that you can follow them using the `-f`
+option, this is extremely useful when troubleshooting:
+
+```
+kubectl logs nginx -f
+```
+
+Hit `CTRL+c` to exit the logs.
+
+## Task 5: Getting pod details
+
+Like with most objects in Kubernetes you can use the `kubectl describe` command 
+to get more information about a specific pod, for example:
+
+```
+kubectl describe pods nginx
+
+---
+
+Name:             nginx
+Namespace:        alpha
+Priority:         0
+Service Account:  default
+Node:             kbck8s.timmeje.gluo.io/172.31.12.132
+Start Time:       Mon, 07 Nov 2022 14:10:45 +0100
+Labels:           run=nginx
+Annotations:      cni.projectcalico.org/containerID: bfc534439df5871d08385fe03c861ad892438b129859e9a906e13ccf50520ecb
+                  cni.projectcalico.org/podIP: 10.1.70.4/32
+                  cni.projectcalico.org/podIPs: 10.1.70.4/32
+Status:           Running
+IP:               10.1.70.4
+IPs:
+  IP:  10.1.70.4
+Containers:
+  nginx:
+    Container ID:   containerd://ba9cad8e9cbc43105d57fc748b3209b1f879b054369d02e153fc31928a0c931c
+    Image:          nginx
+    Image ID:       docker.io/library/nginx@sha256:943c25b4b66b332184d5ba6bb18234273551593016c0e0ae906bab111548239f
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Mon, 07 Nov 2022 14:10:47 +0100
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-qwz2n (ro)
 Conditions:
-  Type             Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
-  ----             ------  -----------------                 ------------------                ------                       -------
-  MemoryPressure   False   Thu, 26 Sep 2019 11:50:39 +0200   Wed, 10 Jul 2019 13:29:43 +0200   KubeletHasSufficientMemory   kubelet has sufficient memory available
-  DiskPressure     False   Thu, 26 Sep 2019 11:50:39 +0200   Wed, 10 Jul 2019 13:29:43 +0200   KubeletHasNoDiskPressure     kubelet has no disk pressure
-  PIDPressure      False   Thu, 26 Sep 2019 11:50:39 +0200   Wed, 10 Jul 2019 13:29:43 +0200   KubeletHasSufficientPID      kubelet has sufficient PID available
-  Ready            True    Thu, 26 Sep 2019 11:50:39 +0200   Wed, 10 Jul 2019 13:29:43 +0200   KubeletReady                 kubelet is posting ready status
-Addresses:
-  InternalIP:  10.0.2.15
-  Hostname:    minikube
-Capacity:
- cpu:                2
- ephemeral-storage:  17784772Ki
- hugepages-2Mi:      0
- memory:             2038624Ki
- pods:               110
-Allocatable:
- cpu:                2
- ephemeral-storage:  16390445849
- hugepages-2Mi:      0
- memory:             1936224Ki
- pods:               110
-System Info:
- Machine ID:                 84a95625dace4d7b8313ea0f131bebd1
- System UUID:                2449230B-73F2-456A-B1E8-3A5F61B9B546
- Boot ID:                    93caae44-301d-4799-8ba7-d5fcf30b2e52
- Kernel Version:             4.15.0
- OS Image:                   Buildroot 2018.05
- Operating System:           linux
- Architecture:               amd64
- Container Runtime Version:  docker://18.9.6
- Kubelet Version:            v1.16.0
- Kube-Proxy Version:         v1.16.0
-Non-terminated Pods:         (19 in total)
-  Namespace                  Name                                          CPU Requests  CPU Limits  Memory Requests  Memory Limits  AGE
-  ---------                  ----                                          ------------  ----------  ---------------  -------------  ---
-  default                    bigcommerce-extension-9f56dd765-6pvgj         0 (0%)        0 (0%)      0 (0%)           0 (0%)         77d
-  default                    container-info-c5cf66fb6-9r4gp                0 (0%)        0 (0%)      0 (0%)           0 (0%)         28d
-  default                    container-info-c5cf66fb6-q69fs                0 (0%)        0 (0%)      0 (0%)           0 (0%)         28d
-  default                    container-info-c5cf66fb6-zrf6w                0 (0%)        0 (0%)      0 (0%)           0 (0%)         28d
-  default                    nginx                                         0 (0%)        0 (0%)      0 (0%)           0 (0%)         34d
-  default                    nginx2                                        0 (0%)        0 (0%)      0 (0%)           0 (0%)         34d
-  default                    nginx3                                        0 (0%)        0 (0%)      0 (0%)           0 (0%)         34d
-  kube-system                coredns-5644d7b6d9-cmvbm                      100m (5%)     0 (0%)      70Mi (3%)        170Mi (8%)     5m46s
-  kube-system                coredns-5644d7b6d9-vbl8f                      100m (5%)     0 (0%)      70Mi (3%)        170Mi (8%)     5m47s
-  kube-system                etcd-minikube                                 0 (0%)        0 (0%)      0 (0%)           0 (0%)         6m11s
-  kube-system                kube-addon-manager-minikube                   5m (0%)       0 (0%)      50Mi (2%)        0 (0%)         6m12s
-  kube-system                kube-apiserver-minikube                       250m (12%)    0 (0%)      0 (0%)           0 (0%)         6m12s
-  kube-system                kube-controller-manager-minikube              200m (10%)    0 (0%)      0 (0%)           0 (0%)         6m10s
-  kube-system                kube-proxy-mkxhk                              0 (0%)        0 (0%)      0 (0%)           0 (0%)         5m40s
-  kube-system                kube-scheduler-minikube                       100m (5%)     0 (0%)      0 (0%)           0 (0%)         6m11s
-  kube-system                storage-provisioner                           0 (0%)        0 (0%)      0 (0%)           0 (0%)         77d
-  kubernetes-dashboard       dashboard-metrics-scraper-76585494d8-xpxpb    0 (0%)        0 (0%)      0 (0%)           0 (0%)         5m47s
-  kubernetes-dashboard       kubernetes-dashboard-57f4cb4545-n7ct4         0 (0%)        0 (0%)      0 (0%)           0 (0%)         5m47s
-  lab-04                     nginx                                         0 (0%)        0 (0%)      0 (0%)           0 (0%)         28d
-Allocated resources:
-  (Total limits may be over 100 percent, i.e., overcommitted.)
-  Resource           Requests     Limits
-  --------           --------     ------
-  cpu                755m (37%)   0 (0%)
-  memory             190Mi (10%)  340Mi (17%)
-  ephemeral-storage  0 (0%)       0 (0%)
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  kube-api-access-qwz2n:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
 Events:
-  Type    Reason                   Age                    From                  Message
-  ----    ------                   ----                   ----                  -------
-  Normal  Starting                 6m23s                  kubelet, minikube     Starting kubelet.
-  Normal  NodeHasSufficientMemory  6m22s (x8 over 6m23s)  kubelet, minikube     Node minikube status is now: NodeHasSufficientMemory
-  Normal  NodeHasNoDiskPressure    6m22s (x8 over 6m23s)  kubelet, minikube     Node minikube status is now: NodeHasNoDiskPressure
-  Normal  NodeHasSufficientPID     6m22s (x7 over 6m23s)  kubelet, minikube     Node minikube status is now: NodeHasSufficientPID
-  Normal  NodeAllocatableEnforced  6m22s                  kubelet, minikube     Updated Node Allocatable limit across pods
-  Normal  Starting                 6m                     kube-proxy, minikube  Starting kube-proxy.
-  Normal  Starting                 5m37s                  kube-proxy, minikube  Starting kube-proxy.
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  4s    default-scheduler  Successfully assigned alpha/nginx to kbck8s.timmeje.gluo.io
+  Normal  Pulling    5s    kubelet            Pulling image "nginx"
+  Normal  Pulled     4s    kubelet            Successfully pulled image "nginx" in 1.115484667s
+  Normal  Created    4s    kubelet            Created container nginx
+  Normal  Started    3s    kubelet            Started container nginx
 ```
 
-Read through the output above to see all the information that is available about
-the node.
+## Task 6: Cleaning up
 
-The `kubectl describe nodes <node_name>` is a very useful tool when
-troubleshooting a node that is failing.  Going through the output (especially 
-the event section) will, in almost all cases, give a  good indication why the 
-node is not behaving as it should.
+Clean up the pod for this lab:
+
+```
+kubectl delete pod nginx
+
+---
+
+pod "nginx" deleted
+```

@@ -1,169 +1,141 @@
-# Lab 05 - YAML
+# Lab 05 - Services
 
-Although relatively easy in concept, this lab is a very important one when 
-working with Kubernetes.  In this lab we introduce YAML as a way to describe 
-objects in Kubernetes.  So far we only used specific `kubectl` commands to 
-create a limited set of objects.
+A Kubernetes Service is an abstraction which defines a logical set of Pods and a
+policy by which to access them - sometimes called a micro-service. The set of
+Pods targeted by a Service is (usually) determined by a Label Selector.
 
-If you are not very familiar with YAML check out the website below for a basic
-introduction and its relevance for Kubernetes:
-https://www.mirantis.com/blog/introduction-to-yaml-creating-a-kubernetes-deployment/
+As an example, consider an image-processing backend which is running with 3
+replicas. Those replicas are fungible - frontends do not care which backend they
+use. While the actual Pods that compose the backend set may change, the frontend
+clients should not need to be aware of that or keep track of the list of
+backends themselves. The Service abstraction enables this decoupling.
 
-## Task 1: Creating objects using YAML
+## Task 1: Creating your first service
 
-In the previous labs we have used `kubectl create namespace` to create a
-namespace object in Kubernetes, instead we could (and probably should) have also
-used YAML.  So what would this look like?
-
-The YAML code to replace `kubectl create namespace lab-05` looks like
-this:
+Create a file `lab-05-deployment.yml` with the YAML for the deployment using the
+content below:
 
 ```
-apiVersion: v1
-kind: Namespace
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: lab-05
-```
-
-To create the object in Kubernetes simply copy the above content into a file,
-for example `lab-05-namespace.yml`.  After that simply issue the following
-commmand:
-
-```
-kubectl apply -f lab-05-namespace.yml
-
----
-
-namespace/lab-05 created
-```
-
-Check that the namespace has indeed been created:
-
-```
-kubectl get namespaces
-
----
-
-NAME          STATUS   AGE
-default       Active   22h
-kube-public   Active   22h
-kube-system   Active   22h
-lab-05        Active   23s
-```
-
-## Task 2: Deleting objects using YAML
-
-Deleting an object is even easier, only requirement is that you have the orignal
-YAML file at your disposal:
-
-```
-kubectl delete -f lab-05-namespace.yml
-
----
-
-namespace "lab-05" deleted
-```
-
-## Task 3: Multiple objects
-
-When you have multiple objects you have different options:
-* you can put multiple objects in the same YAML (using lists), we will cover 
-this in a later lab
-* you can have multiple YAML files inside a directory and `kubectl apply` the
-directory (for example: `kubectl apply -f directory_full_of_yaml/`)
-
-## Task 4: YAML and namespaces
-
-When working with YAML you can use namespaces in different ways:
-* as metadata in YAML
-* as an option provided on the command line
-
-As we deleted the namespace in a previous task we first need to recreate it:
-
-```
-kubectl apply -f lab-05-namespace.yml
-
----
-
-namespace/lab-05 created
-```
-
-When working with metadata your YAML to create a single pod will look like this:
-
-```
-apiVersion: v1
-kind: Pod
-metadata:
-  name: nginx
-  namespace: lab-05
+  name: container-info
+  labels:
+    app: container-info
 spec:
-  containers:
-  - name: nginx
-    image: nginx
+  replicas: 2
+  selector:
+    matchLabels:
+      app: container-info
+  template:
+    metadata:
+      labels:
+        app: container-info
+    spec:
+      containers:
+      - name: container-info
+        image: gluobe/container-info:blue
+        ports:
+        - containerPort: 80
 ```
 
-Notice the `namespace: lab-05` line in the metadata section.  This will force
-the pod to be created inside the `lab-05` namespace.
-
-Save the above content into `lab-05-pod-metadata-ns.yml` and apply it:
+Create the deployment using the above file:
 
 ```
-kubectl apply -f lab-05-pod-metadata-ns.yml
+kubectl apply -f lab-05-deployment.yml
 
 ---
 
-pod/nginx created
+deployment "container-info" created
 ```
 
-Or you can omit the namespace in the metadata and provide it at the command
-line:
+Verfiy that this is working:
 
 ```
+kubectl get pods
+
+---
+
+NAME                              READY     STATUS    RESTARTS   AGE
+container-info-5998b79944-gh57z   1/1       Running   0          21s
+container-info-5998b79944-t4h6n   1/1       Running   0          21s
+```
+
+Now create a file `lab-05-service.yml` with the YAML for the service using the
+content below:
+
+```
+kind: Service
 apiVersion: v1
-kind: Pod
 metadata:
-  name: nginx
+  name: container-info
 spec:
-  containers:
-  - name: nginx
-    image: nginx
+  selector:
+    app: container-info
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: NodePort
 ```
 
-Save the above content into `lab-05-pod.yml` and apply it:
+Create the service using the above file:
+
 ```
-kubectl apply -f lab-05-pod.yml -n lab-05
+kubectl apply -f lab-05-service.yml
 
 ---
 
-pod/nginx unchanged
+service "container-info" created
 ```
 
-> NOTE: you will get the `pod/nginx` unchanged message as nothing has changed
-
-Both options have their specific use-cases.
-
-As some of you might wonder what happens when you both specify a namespace
-inside the metadata as well as on the command line, so let us give this a try:
+Check that the service has been created succesfully:
 
 ```
-kubectl apply -f lab-05-pod-metadata-ns.yml -n default
+kubectl get service
 
 ---
 
-error: the namespace from the provided object "lab-05" does not match the namespace "default". You must pass '--namespace=lab-05' to perform this operation.
+NAME             TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+container-info   NodePort   10.152.183.231   <none>        80:32207/TCP   6m54s
 ```
 
-As you can see, Kubernetes will not allow you to override the namespace that is
-set in the yaml code.
+## Task 2: Accessing your first service
 
-## Task 5: Cleaning up
+In previous labs we always used the `port-forward` method to expose a pod, as 
+this method only allows us to connect to a single pod we will use a different 
+method when wofking with services backed by multiple, replicated pods.
 
-Clean up the namespace for this lab:
+* How can you access your service? Try to figure out what host and port you have to connect to! Hints:
+  * You can `describe` most (if not all) Kubernetes objects using `kubectl` to get detailed info on them
+  * A `NodePort` service will expose a port on all nodes in a Kubernetes cluster, but our cluster only has one node! It has a publicly accessible hostname/IP address.
+
+Once you've figured out how to connect to the `NodePort` service using your browser, you will see how Kubernetes will forward your requests randomly to either of your backend pods by refreshing.
+
+> NOTE: when you refresh you should see a different "avatar" for each pod, the 
+> avatar is generated based on the container name, however browsers tend to 
+> cache pretty hard, so you might need to clear your cache/cookies before 
+> hitting refresh to see a different avatar.
+
+If you cannot see different avatars, use can use the command below to test with 
+`curl` instead.  The command will `curl` the application 10 times and will list 
+the container name.  You should see that it hits different pods:
 
 ```
-kubectl delete ns lab-05
+for i in {1..10}; do curl -s http://<HOSTNAME or IP>:<NODEPORT> | egrep "<td>container-info"; done
 
----
-
-namespace "lab-05" deleted
+          <td>container-info-6d9747978f-2x5r7</td>
+          <td>container-info-6d9747978f-2x5r7</td>
+          <td>container-info-6d9747978f-c9twz</td>
+          <td>container-info-6d9747978f-c9twz</td>
+          <td>container-info-6d9747978f-sqvtw</td>
+          <td>container-info-6d9747978f-sqvtw</td>
+          <td>container-info-6d9747978f-c9twz</td>
+          <td>container-info-6d9747978f-sqvtw</td>
+          <td>container-info-6d9747978f-2x5r7</td>
+          <td>container-info-6d9747978f-sqvtw</td>
 ```
+
+## Task 3: Cleaning up
+
+Ensure that your resources (deployments, services, ...) are cleaned up, either by deleting them directly, or by deleting them using their YAML resource file.

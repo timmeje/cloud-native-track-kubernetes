@@ -1,28 +1,64 @@
-# Lab 11 - Blue / green deployments
+# Lab 13 - Node labeling
 
 ## Task 0: Creating a namespace
 
 Create a namespace for this lab:
 
 ```
-kubectl create ns lab-11
+kubectl create ns lab-13
 
 ---
 
-namespace "lab-11" created
+namespace "lab-13" created
 ```
 
-## Task 1: Blue / green deployment
+## Task 1: Labeling a node
 
-For this task we are creating 2 versions of 1 deployment. This means that we
-can use the service to point to either of the deployments. This can be used for
-example if you want to update your application. We are going to use the
-container-info application again to demo this feature.
+The basic node labeling will give you the option to restrict pods to specific 
+nodes. This could be very usefull if you are running multiple environments. 
+Imagine that we are pushing our application from `test` to `uat` to `prod`. With 
+node labeling you can specify for example that all the pods of the `test` 
+environment are going to be scheduled on the `test` node.
 
-First we will create a blue deployment. This is the first and initial version
-of our application.
+Because we are using `minikube` in this lab, we only have 1 node. This example 
+will show you how you can label the `minikube` node and make sure that the 
+`application` is running on this `minikube` node.
 
-Create a file `lab-11-deployment-blue.yml` with the following content.
+First we need to find the name of the node.
+
+```
+kubectl get nodes
+
+---
+
+NAME       STATUS    ROLES     AGE       VERSION
+minikube   Ready     master    2d        v1.13.3
+```
+
+Now you can add a label to the `minikube` node with the following command.
+
+```
+kubectl label nodes minikube environment=test
+
+---
+
+node/minikube labeled
+```
+
+This labels the `minikube` node with the `environment=test` label. You can 
+confirm that the node is labeled with the command.
+
+```
+kubectl get nodes --show-labels
+
+---
+
+NAME       STATUS    ROLES     AGE       VERSION   LABELS
+minikube   Ready     master    2d        v1.13.3   beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,environment=test,kubernetes.io/hostname=minikube,node-role.kubernetes.io/master=
+```
+
+Create a new deployment file `lab-13-label-deployment.yml` and add this content 
+to it.
 
 ```
 apiVersion: apps/v1
@@ -47,183 +83,117 @@ spec:
         image: gluobe/container-info:blue
         ports:
         - containerPort: 80
+      nodeSelector:
+        environment: test
 ```
 
-As you can see we have added a new label called `version` with this label we can
-select the correct deployment in the service we are creating in this task.
+This is basically our standard container-info deployment. We only added the 
+following:
 
 ```
-kubectl apply -f lab-11-deployment-blue.yml -n lab-11
+nodeSelector:
+  environment: test
+```
+
+And this will define that the deployment is going to run on this specific node.
+
+```
+kubectl apply -f lab-13-label-deployment.yml -n lab-13
 
 ---
 
 deployment.apps/container-info-blue created
 ```
 
-Now create the file `lab-11-service-blue-green.yml` with the following content.
+You can verify on which node a pod is running using the following command:
 
 ```
-kind: Service
+kubectl get pods -n lab-13 -o wide
+
+---
+
+NAME                                   READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE   READINESS GATES
+container-info-blue-689dd4c865-4dhh6   1/1     Running   0          47s   172.17.0.5   minikube   <none>           <none>
+container-info-blue-689dd4c865-9bnc8   1/1     Running   0          47s   172.17.0.4   minikube   <none>           <none>
+container-info-blue-689dd4c865-r5djk   1/1     Running   0          47s   172.17.0.7   minikube   <none>           <none>
+```
+
+As we only have a single node it is obvious that our pods are running on our 
+node, but if we would have had more nodes you could see that our pod was running 
+on the node we specifically selected.
+
+### Task 2: Pod Affinity
+
+Pod Affinity means that you can schedule pods with the same label on the same
+node. If available. So imagine that we want our `test` pod to run next to other
+pods with the label `test` on a node. We need to define the `podAffinity` like
+this.
+
+```
 apiVersion: v1
+kind: Pod
 metadata:
-  name: container-info
+  name: with-pod-affinity
 spec:
-  selector:
-    app: container-info
-    version: "blue"
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 80
-  type: NodePort
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: environment
+            operator: In
+            values:
+            - test
+        topologyKey: failure-domain.beta.kubernetes.io/zone
+  containers:
+  - name: container-info
+    image: gluobe/container-info:blue
 ```
 
-Notice that in the `spec:selector:version` we chose for `blue` this specifies
-the version of the deployment we are going to expose.
+We are using `requiredDuringSchedulingIgnoredDuringExecution` this means that
+this is a requirement while the pod is getting scheduled. It's also possible to
+define `preferredDuringSchedulingIgnoredDuringExecution`. This means that he
+will try to schedule the pod with these conditions if possible. Otherwise it
+will schedule the pod on a other node.
+
+### Task 3: Pod Anti Affinity
+
+The oposite from what we did above can be done with `antiAffinity`. If we do the
+following in the pod yml.
 
 ```
-kubectl apply -f lab-11-service-blue-green.yml -n lab-11
-
----
-
-service/container-info created
-```
-
-Confirm that the application is running by doing to following command.
-
-```
-minikube service container-info -n lab-11
-```
-
-You will see that our `blue` version of the deployment is now running on our
-minikube instance.
-
-After you exposed the `blue` version we are going to create a `green` version
-of the application. This is done by creating a file
-`lab-11-deployment-green.yml` with the following content.
-
-```
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: container-info-green
-  labels:
-    app: container-info
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: container-info
-  template:
-    metadata:
-      labels:
-        app: container-info
-        version: "green"
-    spec:
-      containers:
-      - name: container-info
-        image: gluobe/container-info:green
-        ports:
-        - containerPort: 80
-```
-
-We changed some parameters from `blue` to `green`, notice that the image changed
-as well. We are now deploying a `green` version.
-
-```
-kubectl apply -f lab-11-deployment-green.yml -n lab-11
-
----
-
-deployment.apps/container-info-green created
-```
-
-If you list the deployments in your namespace you will see that we now have 2
-deployments.
-
-```
-kubectl get deployment -n lab-11
-
----
-
-NAME                   DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
-container-info-blue    3         3         3            3           12m
-container-info-green   3         3         3            3           12m
-```
-
-A `blue` and a `green` version. Remember that our service is still pointing at
-the `blue` version. In the next step we will update the service in a way that it
-will point to the `green` version of our deployment.
-
-Edit the `lab-11-service-blue-green.yml` file with the content below. You can 
-also just clear the file and copy the following content.
-
-```
-kind: Service
 apiVersion: v1
+kind: Pod
 metadata:
-  name: container-info
+  name: with-pod-affinity
 spec:
-  selector:
-    app: container-info
-    version: "green"
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 80
-  type: NodePort
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: environment
+            operator: In
+            values:
+            - test
+        topologyKey: failure-domain.beta.kubernetes.io/zone
+  containers:
+  - name: container-info
+    image: gluobe/container-info:blue
 ```
 
-The only thing that is updated in this file is basically the `version` this is
-set to `green` now.
+The pod will `not` schedule next to the already running `test` environment pod
+on any node. This means that the scheduler is going to look for another pod
+where no pod is running with the label `environment=test`.
 
-```
-kubectl apply -f lab-11-service-blue-green.yml -n lab-11
-
----
-
-service/container-info configured
-```
-
-Now you can run the service command again to check your newly updated version of
-the deployment.
-
-```
-minikube service container-info -n lab-11
-```
-
-We can now delete the blue deployment:
-
-```
-kubectl delete -f lab-11-deployment-blue.yml -n lab-11
-
----
-
-deployment.apps "container-info-blue" deleted
-```
-
-You now only have one deployment running, the `green`:
-
-```
-kubectl get deployment -n lab-11
-
----
-
-NAME                   READY   UP-TO-DATE   AVAILABLE   AGE
-container-info-green   3/3     3            3           3m31s
-```
-
-Congratulations, you have successfully performed you first `blue / green` 
-deployment on `minikube`!
-
-## Task 2: Cleanup
+## Task 4: Cleanup
 
 Clean up the namespace for this lab:
 
 ```
-kubectl delete ns lab-11
+kubectl delete ns lab-13
 
 ---
 
-namespace "lab-11" deleted
+namespace "lab-13" deleted
 ```

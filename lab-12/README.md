@@ -1,272 +1,85 @@
-# Lab 12 - Liveness / readiness probes
+# Lab 14 - Dashboard
 
-## Task 0: Creating a namespace
+The dashboard serves different functions, primarily it is used to visualize your 
+Kubernetes cluster, however it can also be used to deploy new objects into your 
+cluster.  In this small lab we will explore both functions.
 
-Create a namespace for this lab:
+## Task 1: Opening the dashboard
 
-```
-kubectl create ns lab-12
-
----
-
-namespace "lab-12" created
-```
-
-## Task 1: Using readiness probe 
-
-To test the readiness of a pod we are going to create the following file. Name 
-the file `lab-12-probe-readiness.yml` and fill with the content below.
-
-Pay special attention to the`readinessProbe` section.  This is the check that 
-Kubernetes will perform continuously to see if a pod is ready or not.
+Opening the Kubernetes dashboard with minikube is very easy, simply run the 
+following command and the dashboard will open automatically in your browser: 
 
 ```
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    app: probe-readiness
-  name: probe-readiness
-spec:
-  containers:
-  - name: probe-readiness
-    image: busybox
-    args:
-    - /bin/sh
-    - -c
-    - touch /tmp/healthy; sleep 6000
-    readinessProbe:
-      exec:
-        command:
-        - cat
-        - /tmp/ready
-      initialDelaySeconds: 5
-      periodSeconds: 5
+minikube dashboard
+
+🔌  Enabling dashboard ...
+🤔  Verifying dashboard health ...
+🚀  Launching proxy ...
+🤔  Verifying proxy health ...
+🎉  Opening http://127.0.0.1:57922/api/v1/namespaces/kube-system/services/http:kubernetes-dashboard:/proxy/ in your default browser...
 ```
 
-Apply the file in your namespace to create the `probe-readiness` pod.
+## Task 2: Creating a namespace
 
-```
-kubectl apply -f lab-12-probe-readiness.yml -n lab-12
+We will now create a namespace using the dashboard UI.
 
----
-
-pod "probe-readiness" created
-```
-
-Now we need to check the state of the pod.
-
-```
-kubectl get pods -n lab-12
-
----
-
-NAME              READY   STATUS    RESTARTS   AGE
-probe-readiness   0/1     Running   0          10s
-```
-
-We see that the pod is running but not ready yet: `READY: 0/1`.
-
-Before we are going to fix this readiness check we are going to create a 
-service for this pod.
-
-Create the file `lab-12-probes-service.yml` with this content.
-
-```
-kind: Service
-apiVersion: v1
-metadata:
-  name: probes-service
-spec:
-  selector:
-    app: probe-readiness
-  ports:
-  - protocol: TCP
-    port: 80
-    targetPort: 80
-  type: NodePort
-```
-
-Apply the file and check out the service.
-
-```
-kubectl apply -f lab-12-probes-service.yml -n lab-12
-
----
-
-service "probes-service" created
-```
-
-When we describe the service at this moment we won't see an endpoint, this is 
-expected.  Kubernetes will only create an endpoint for pods when they are in the 
-ready state.
-
-```
-kubectl describe service probes-service -n lab-12
-
----
-
-Name:                     probes-service
-Namespace:                lab-12
-Labels:                   <none>
-Annotations:              kubectl.kubernetes.io/last-applied-configuration={"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"probes-service","namespace":"lab-10"},"spec":{"ports":[{"port":80,"protocol":"...
-Selector:                 app=probes
-Type:                     NodePort
-IP:                       10.105.221.153
-Port:                     <unset>  80/TCP
-TargetPort:               80/TCP
-NodePort:                 <unset>  32748/TCP
-Endpoints:
-Session Affinity:         None
-External Traffic Policy:  Cluster
-Events:                   <none>
-```
-
-If we fix the readiness check on the pod (by creating the `/tmp/ready` file), 
-our pod will become ready and will be added as an endpoint of the service. Let's 
-create the file inside our pod:
-
-```
-kubectl exec probe-readiness -n lab-12 -- touch /tmp/ready
-```
-
-Now you will see that the pod is ready.
-
-```
-kubectl get pods -n lab-12
-
----
-
-NAME              READY   STATUS    RESTARTS   AGE
-probe-readiness   1/1     Running   0          2m39s
-```
-
-And if we describe the service once again we will see that an endpoint has 
-appeared.
-
-```
-kubectl describe service probes-service -n lab-12
-
----
-
-Name:                     probes-service
-Namespace:                lab-12
-Labels:                   <none>
-Annotations:              kubectl.kubernetes.io/last-applied-configuration={"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"probes-service","namespace":"lab-10"},"spec":{"ports":[{"port":80,"protocol":"...
-Selector:                 app=probes
-Type:                     NodePort
-IP:                       10.105.221.153
-Port:                     <unset>  80/TCP
-TargetPort:               80/TCP
-NodePort:                 <unset>  32748/TCP
-Endpoints:                172.17.0.4:80
-Session Affinity:         None
-External Traffic Policy:  Cluster
-Events:                   <none>
-```
-
-Delete the pod and service created in this task:
-
-```
-kubectl delete -f lab-12-probe-readiness.yml -n lab-12
-
----
-
-pod "probe-readiness" deleted
-```
-
-```
-kubectl delete -f lab-12-probes-service.yml -n lab-12
-
----
-
-service "probes-service" deleted
-```
-
-## Task 2: Using liveness probe 
-
-Now we will simulate a situation where the pod becomes unhealthy (in other words 
-the `livenessProbe` will fail).  If a pods becomes unhealthy Kubernetes will try 
-to fix this by deleting the pod (and starting a new pod).
-
-
-To test the liveness of a pod we are going to create the following file. Name 
-the file `lab-12-probe-liveness.yml` and fill with the content below.
-
-Pay special attention the the`livenessProbe` section.  This is the check that 
-Kubernetes will perform continuously to see if a pod is alive/healthy or not.
+Click the `+ CREATE` link at the top right corner of the dashboard.  Now select 
+the `CREATE FROM TEXT INPUT` tab.  Copy the content below and paste it into the 
+form:
 
 ```
 apiVersion: v1
-kind: Pod
+kind: Namespace
 metadata:
-  labels:
-    app: probe-liveness
-  name: probe-liveness
-spec:
-  containers:
-  - name: probe-liveness
-    image: busybox
-    args:
-    - /bin/sh
-    - -c
-    - touch /tmp/healthy; sleep 6000
-    livenessProbe:
-      exec:
-        command:
-        - cat
-        - /tmp/healthy
-      initialDelaySeconds: 5
-      periodSeconds: 5
+  name: lab-14
 ```
 
-Apply the file in your namespace to create the `probe-liveness` pod.
+Finally click the `UPLOAD` button.
+
+In the left menu select the `Namespaces` item and verify that your namespace has 
+been created succesfully.
+
+## Task 3: Deploying an app
+
+To deploy an app using the dashboard UI click the `+ CREATE` link at the top 
+right corner of the dashboard.  Now select the `CREATE AN APP` tab.
+
+Fill in the following details:
+
+* `App name`: container-info
+* `Container image`: gluobe/container-info:blue
+* `Service`: External
+* `Port`: 8888
+* `Target port`: 80
+
+Click the `SHOW ADVANCED OPTIONS` link and add some additional details:
+
+* `Namespace`: lab-14
+
+Click the `DEPLOY` button at the bottom.
+
+## Task 4: Opening your app
+
+To open you app, go back to your terminal and enter the following command:
 
 ```
-kubectl apply -f lab-12-probe-liveness.yml -n lab-12
+minikube service container-info -n lab-14
+
+🎉  Opening kubernetes service lab-14/container-info in default browser...
+```
+
+You should see a familiar website.
+
+## Task 5: Deleting a namespace
+
+While you can easily add namespaces (or other objects) from the dashboard, you 
+cannot delete objects from there.  So delete the namespace, head back over to 
+your terminal and run the following command:
+
+```
+kubectl delete ns lab-14
 
 ---
 
-pod/probe-liveness created
-```
-
-Now we need to check the state of the pod.
-
-```
-kubectl get pods -n lab-12
-
----
-
-NAME             READY   STATUS    RESTARTS   AGE
-probe-liveness   1/1     Running   0          10s
-```
-
-To simulate the failure we are going to remove the `/tmp/healthy` file from our 
-pod:
-
-```
-kubectl exec probe-liveness rm /tmp/healthy -n lab-12
-```
-
-Now wait +/- 1 minute and check the status of your pod again:
-
-```
-NAME             READY   STATUS    RESTARTS   AGE
-probe-liveness   1/1     Running   1          2m10s
-```
-
-What you should see is that the restart count is now `1` (this was previously 
-`0`). So we see that Kubernetes fixed our unhealthy pod by deleting it and 
-starting a brand new one.
-
-## Task 2: Cleanup
-
-Clean up the namespace for this lab:
-
-```
-kubectl delete ns lab-12
-
----
-
-namespace "lab-12" deleted
+namespace "lab-14" deleted
 ```
