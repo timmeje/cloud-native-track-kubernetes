@@ -1,4 +1,4 @@
-# Lab 02 - Pods
+# Lab 2 - Pods
 
 In this lab we will run our first, very basic, application on Kubernetes.  We
 will basically run a single pod as our application.

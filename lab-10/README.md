@@ -1,23 +1,11 @@
-# Lab 12 - Liveness / readiness probes
-
-## Task 0: Creating a namespace
-
-Create a namespace for this lab:
-
-```
-kubectl create ns lab-12
-
----
-
-namespace "lab-12" created
-```
+# Lab 10 - Liveness / readiness probes
 
 ## Task 1: Using readiness probe 
 
 To test the readiness of a pod we are going to create the following file. Name 
-the file `lab-12-probe-readiness.yml` and fill with the content below.
+the file `lab-10-probe-readiness.yml` and fill with the content below.
 
-Pay special attention to the`readinessProbe` section.  This is the check that 
+Pay special attention to the `readinessProbe` section.  This is the check that 
 Kubernetes will perform continuously to see if a pod is ready or not.
 
 ```
@@ -34,7 +22,7 @@ spec:
     args:
     - /bin/sh
     - -c
-    - touch /tmp/healthy; sleep 6000
+    - sleep 6000
     readinessProbe:
       exec:
         command:
@@ -47,7 +35,7 @@ spec:
 Apply the file in your namespace to create the `probe-readiness` pod.
 
 ```
-kubectl apply -f lab-12-probe-readiness.yml -n lab-12
+kubectl apply -f lab-10-probe-readiness.yml
 
 ---
 
@@ -57,7 +45,7 @@ pod "probe-readiness" created
 Now we need to check the state of the pod.
 
 ```
-kubectl get pods -n lab-12
+kubectl get pods
 
 ---
 
@@ -70,7 +58,7 @@ We see that the pod is running but not ready yet: `READY: 0/1`.
 Before we are going to fix this readiness check we are going to create a 
 service for this pod.
 
-Create the file `lab-12-probes-service.yml` with this content.
+Create the file `lab-10-probes-service.yml` with this content.
 
 ```
 kind: Service
@@ -90,7 +78,7 @@ spec:
 Apply the file and check out the service.
 
 ```
-kubectl apply -f lab-12-probes-service.yml -n lab-12
+kubectl apply -f lab-10-probes-service.yml
 
 ---
 
@@ -102,14 +90,14 @@ expected.  Kubernetes will only create an endpoint for pods when they are in the
 ready state.
 
 ```
-kubectl describe service probes-service -n lab-12
+kubectl describe service probes-service
 
 ---
 
 Name:                     probes-service
-Namespace:                lab-12
+Namespace:                ...
 Labels:                   <none>
-Annotations:              kubectl.kubernetes.io/last-applied-configuration={"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"probes-service","namespace":"lab-10"},"spec":{"ports":[{"port":80,"protocol":"...
+Annotations:              ...
 Selector:                 app=probes
 Type:                     NodePort
 IP:                       10.105.221.153
@@ -122,66 +110,9 @@ External Traffic Policy:  Cluster
 Events:                   <none>
 ```
 
-If we fix the readiness check on the pod (by creating the `/tmp/ready` file), 
-our pod will become ready and will be added as an endpoint of the service. Let's 
-create the file inside our pod:
-
-```
-kubectl exec probe-readiness -n lab-12 -- touch /tmp/ready
-```
-
-Now you will see that the pod is ready.
-
-```
-kubectl get pods -n lab-12
-
----
-
-NAME              READY   STATUS    RESTARTS   AGE
-probe-readiness   1/1     Running   0          2m39s
-```
-
-And if we describe the service once again we will see that an endpoint has 
-appeared.
-
-```
-kubectl describe service probes-service -n lab-12
-
----
-
-Name:                     probes-service
-Namespace:                lab-12
-Labels:                   <none>
-Annotations:              kubectl.kubernetes.io/last-applied-configuration={"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"probes-service","namespace":"lab-10"},"spec":{"ports":[{"port":80,"protocol":"...
-Selector:                 app=probes
-Type:                     NodePort
-IP:                       10.105.221.153
-Port:                     <unset>  80/TCP
-TargetPort:               80/TCP
-NodePort:                 <unset>  32748/TCP
-Endpoints:                172.17.0.4:80
-Session Affinity:         None
-External Traffic Policy:  Cluster
-Events:                   <none>
-```
-
-Delete the pod and service created in this task:
-
-```
-kubectl delete -f lab-12-probe-readiness.yml -n lab-12
-
----
-
-pod "probe-readiness" deleted
-```
-
-```
-kubectl delete -f lab-12-probes-service.yml -n lab-12
-
----
-
-service "probes-service" deleted
-```
+* Try to access your service as you would otherwise. What happens?
+* Fix it! You need to ensure the readiness probe starts to succeed.
+* Once you fixed it, check that there now is an available endpoint when describing the service again.
 
 ## Task 2: Using liveness probe 
 
@@ -189,9 +120,8 @@ Now we will simulate a situation where the pod becomes unhealthy (in other words
 the `livenessProbe` will fail).  If a pods becomes unhealthy Kubernetes will try 
 to fix this by deleting the pod (and starting a new pod).
 
-
 To test the liveness of a pod we are going to create the following file. Name 
-the file `lab-12-probe-liveness.yml` and fill with the content below.
+the file `lab-10-probe-liveness.yml` and fill with the content below.
 
 Pay special attention the the`livenessProbe` section.  This is the check that 
 Kubernetes will perform continuously to see if a pod is alive/healthy or not.
@@ -223,7 +153,7 @@ spec:
 Apply the file in your namespace to create the `probe-liveness` pod.
 
 ```
-kubectl apply -f lab-12-probe-liveness.yml -n lab-12
+kubectl apply -f lab-10-probe-liveness.yml
 
 ---
 
@@ -233,7 +163,7 @@ pod/probe-liveness created
 Now we need to check the state of the pod.
 
 ```
-kubectl get pods -n lab-12
+kubectl get pods
 
 ---
 
@@ -241,32 +171,9 @@ NAME             READY   STATUS    RESTARTS   AGE
 probe-liveness   1/1     Running   0          10s
 ```
 
-To simulate the failure we are going to remove the `/tmp/healthy` file from our 
-pod:
-
-```
-kubectl exec probe-liveness rm /tmp/healthy -n lab-12
-```
-
-Now wait +/- 1 minute and check the status of your pod again:
-
-```
-NAME             READY   STATUS    RESTARTS   AGE
-probe-liveness   1/1     Running   1          2m10s
-```
-
-What you should see is that the restart count is now `1` (this was previously 
-`0`). So we see that Kubernetes fixed our unhealthy pod by deleting it and 
-starting a brand new one.
+* What do you have to do to make the livenessprobe fail?
+* What happens when you do that?
 
 ## Task 2: Cleanup
 
-Clean up the namespace for this lab:
-
-```
-kubectl delete ns lab-12
-
----
-
-namespace "lab-12" deleted
-```
+Ensure that your resources are cleaned up, either by deleting them directly, or by deleting them using their YAML resource file.

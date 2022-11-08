@@ -1,4 +1,4 @@
-# Lab 13 - Node labeling
+# Lab 11 - Node labeling
 
 ## Task 0: Creating a namespace
 

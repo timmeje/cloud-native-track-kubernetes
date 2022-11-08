@@ -1,16 +1,4 @@
-# Lab 10 - Lists
-
-## Task 0: Creating a namespace
-
-Create a namespace for this lab:
-
-```
-kubectl create ns lab-10
-
----
-
-namespace "lab-10" created
-```
+# Lab 8 - Lists
 
 ## Task 1: Creating objects using a list
 
@@ -18,7 +6,7 @@ You can put different Kubernetes objects in a list, and apply the list instead
 of applying the objects seperatly. This will deploy all the resources you have 
 listed in this list.
 
-Create the file `lab-10-list.yml` with the following content, the items in the 
+Create the file `lab-08-list.yml` with the following content, the items in the 
 list should look familiar as we have created them before individually.
 
 ```
@@ -44,7 +32,7 @@ items:
     labels:
       app: container-info
   spec:
-    replicas: 3
+    replicas: 2
     selector:
       matchLabels:
         app: container-info
@@ -61,7 +49,7 @@ items:
 We can apply the entire list in one command.
 
 ```
-kubectl apply -f lab-10-list.yml -n lab-10
+kubectl apply -f lab-08-list.yml
 
 ---
 
@@ -72,7 +60,7 @@ deployment.apps/container-info created
 Now we can list all the resources we have created.
 
 ```
-kubectl get all -n lab-10
+kubectl get all -n lab-08
 
 ---
 
@@ -91,20 +79,6 @@ NAME                                        DESIRED   CURRENT   READY   AGE
 replicaset.apps/container-info-56f64f4f8c   3         3         3       30s
 ```
 
-And like before we can access this deployment with the following command.
-
-```
-minikube service container-info -n lab-10
-```
-
 ## Task 2: Cleanup
 
-Clean up the namespace for this lab:
-
-```
-kubectl delete ns lab-10
-
----
-
-namespace "lab-10" deleted
-```
+Ensure that your resources are cleaned up, either by deleting them directly, or by deleting them using their YAML resource file.

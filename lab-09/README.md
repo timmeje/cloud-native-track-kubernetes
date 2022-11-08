@@ -1,16 +1,4 @@
-# Lab 11 - Blue / green deployments
-
-## Task 0: Creating a namespace
-
-Create a namespace for this lab:
-
-```
-kubectl create ns lab-11
-
----
-
-namespace "lab-11" created
-```
+# Lab 9 - Blue / green deployments
 
 ## Task 1: Blue / green deployment
 
@@ -22,7 +10,7 @@ container-info application again to demo this feature.
 First we will create a blue deployment. This is the first and initial version
 of our application.
 
-Create a file `lab-11-deployment-blue.yml` with the following content.
+Create a file `lab-9-deployment-blue.yml` with the following content.
 
 ```
 apiVersion: apps/v1
@@ -53,14 +41,14 @@ As you can see we have added a new label called `version` with this label we can
 select the correct deployment in the service we are creating in this task.
 
 ```
-kubectl apply -f lab-11-deployment-blue.yml -n lab-11
+kubectl apply -f lab-9-deployment-blue.yml
 
 ---
 
 deployment.apps/container-info-blue created
 ```
 
-Now create the file `lab-11-service-blue-green.yml` with the following content.
+Now create the file `lab-9-service-blue-green.yml` with the following content.
 
 ```
 kind: Service
@@ -82,25 +70,16 @@ Notice that in the `spec:selector:version` we chose for `blue` this specifies
 the version of the deployment we are going to expose.
 
 ```
-kubectl apply -f lab-11-service-blue-green.yml -n lab-11
+kubectl apply -f lab-9-service-blue-green.yml
 
 ---
 
 service/container-info created
 ```
 
-Confirm that the application is running by doing to following command.
-
-```
-minikube service container-info -n lab-11
-```
-
-You will see that our `blue` version of the deployment is now running on our
-minikube instance.
-
 After you exposed the `blue` version we are going to create a `green` version
 of the application. This is done by creating a file
-`lab-11-deployment-green.yml` with the following content.
+`lab-9-deployment-green.yml` with the following content.
 
 ```
 apiVersion: apps/v1
@@ -131,7 +110,7 @@ We changed some parameters from `blue` to `green`, notice that the image changed
 as well. We are now deploying a `green` version.
 
 ```
-kubectl apply -f lab-11-deployment-green.yml -n lab-11
+kubectl apply -f lab-9-deployment-green.yml
 
 ---
 
@@ -142,7 +121,7 @@ If you list the deployments in your namespace you will see that we now have 2
 deployments.
 
 ```
-kubectl get deployment -n lab-11
+kubectl get deployment
 
 ---
 
@@ -155,7 +134,7 @@ A `blue` and a `green` version. Remember that our service is still pointing at
 the `blue` version. In the next step we will update the service in a way that it
 will point to the `green` version of our deployment.
 
-Edit the `lab-11-service-blue-green.yml` file with the content below. You can 
+Edit the `lab-09-service-blue-green.yml` file with the content below. You can 
 also just clear the file and copy the following content.
 
 ```
@@ -178,24 +157,19 @@ The only thing that is updated in this file is basically the `version` this is
 set to `green` now.
 
 ```
-kubectl apply -f lab-11-service-blue-green.yml -n lab-11
+kubectl apply -f lab-09-service-blue-green.yml
 
 ---
 
 service/container-info configured
 ```
 
-Now you can run the service command again to check your newly updated version of
-the deployment.
-
-```
-minikube service container-info -n lab-11
-```
+Now reload the service in your browser and note how the colour changed.
 
 We can now delete the blue deployment:
 
 ```
-kubectl delete -f lab-11-deployment-blue.yml -n lab-11
+kubectl delete -f lab-09-deployment-blue.yml
 
 ---
 
@@ -205,7 +179,7 @@ deployment.apps "container-info-blue" deleted
 You now only have one deployment running, the `green`:
 
 ```
-kubectl get deployment -n lab-11
+kubectl get deployment
 
 ---
 
@@ -213,17 +187,8 @@ NAME                   READY   UP-TO-DATE   AVAILABLE   AGE
 container-info-green   3/3     3            3           3m31s
 ```
 
-Congratulations, you have successfully performed you first `blue / green` 
-deployment on `minikube`!
+Congratulations, you have successfully performed you first `blue / green` deployment!
 
 ## Task 2: Cleanup
 
-Clean up the namespace for this lab:
-
-```
-kubectl delete ns lab-11
-
----
-
-namespace "lab-11" deleted
-```
+Ensure that your resources are cleaned up, either by deleting them directly, or by deleting them using their YAML resource file.

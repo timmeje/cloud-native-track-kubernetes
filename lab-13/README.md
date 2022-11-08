@@ -1,268 +1,193 @@
-# Lab 15 - Resource limiting
+# Lab 13 - Jobs / Cronjobs
 
-## 1 - Limiting a pod's resources
+## Jobs
 
-When you describe a Pod, you can optionally specify how much CPU and memory 
-(RAM) each Container needs. When containers have resource requests specified, 
-the scheduler can make better decisions about which nodes to place Pods on. And 
-when Containers have their limits specified, contention for resources on a node 
-can be handled in a specified manner.
+A Job creates one or more Pods and ensures that a specified number of them 
+successfully terminate. As pods successfully complete, the Job tracks the 
+successful completions. When a specified number of successful completions is 
+reached, the task (i.e., Job) is complete. Deleting a Job will clean up the Pods 
+it created.
 
-### Requests and Limits
+A simple case is to create one Job object in order to reliably run one Pod to 
+completion. The Job object will start a new Pod if the first Pod fails or is 
+deleted (for example due to a node hardware failure or a node reboot).
 
-Requests are what the container is guaranteed to get. A pod will always be 
-scheduled to a node that has the resources available to meet the request. 
-Limits, on the other hand, make sure a container never goes above a certain 
-value. The container is only allowed to go up to the limit, and then it is 
-restricted.
+You can also use a Job to run multiple Pods in parallel.
 
-### Resource types
+## Task 1: Running an example Job
 
-CPU and memory are each a resource type. A resource type has a base unit. CPU is 
-specified in units of cores, and memory is specified in units of bytes.
+Here is an example Job config. It computes π to 2000 places and prints it out. 
+It takes around 10s to complete.
 
-CPU and memory are collectively referred to as compute resources, or just 
-resources. Compute resources are measurable quantities that can be requested, 
-allocated, and consumed. They are distinct from API resources. API resources, 
-such as Pods and Services are objects that can be read and modified through the 
-Kubernetes API server.
-
-#### Cpu
-
-Fractional requests are allowed. A Container with spec.containers[].resources.requests.cpu 
-of 0.5 is guaranteed half as much CPU as one that asks for 1 CPU. The expression 
-0.1 is equivalent to the expression 100m, which can be read as “one hundred 
-millicpu”. Some people say “one hundred millicores”, and this is understood to 
-mean the same thing.
-
-So basicly cpu: "500m" means 0.5 cpu, and cpu: "2000m" means 2 cpu's.
-
-#### Memory
-
-Limits and requests for memory are measured in bytes. You can express memory as 
-a plain integer or as a fixed-point integer using one of these suffixes: E, P, 
-T, G, M, K. You can also use the power-of-two equivalents: Ei, Pi, Ti, Gi, Mi, 
-Ki. For example, the following represent roughly the same value:
+lab-13-job.yml:
 
 ```
-128974848, 129e6, 129M, 123Mi
-```
-
-### Task 0: Creating a namespace
-
-Create a namespace for this lab:
-
-```
-kubectl create ns lab-15
-
----
-
-namespace/lab-15 created
-```
-
-### Task 1: Describing a pod with resource limits
-
-Create a file named `lab-15-limited-pod.yml` with the following content.
-
-```
-apiVersion: v1
-kind: Pod
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: container-info
+  name: pi
 spec:
-  containers:
-  - name: container-info
-    image: gluobe/container-info:blue
-    resources:
-      requests:
-        memory: "64Mi"
-        cpu: "250m"
-      limits:
-        memory: "128Mi"
-        cpu: "500m"
+  template:
+    spec:
+      containers:
+      - name: pi
+        image: perl
+        command: ["perl",  "-Mbignum=bpi", "-wle", "print bpi(2000)"]
+      restartPolicy: Never
+  backoffLimit: 4
 ```
 
-### Task 2: Apply the the file to the Kubernetes cluster:
+Now let’s run `kubectl create -f lab-13-job.yml` to deploy the example.
+
+## Task 2: Check the status of the job
 
 ```
-kubectl apply -f lab-15-limited-pod.yml -n lab-15
+kubectl describe jobs/pi
 
 ---
 
-pod/container-info created
+Name:           pi
+Namespace:      default
+Selector:       controller-uid=f08d7c7d-c8c4-11e9-b7ce-42010a84026a
+Labels:         controller-uid=f08d7c7d-c8c4-11e9-b7ce-42010a84026a
+                job-name=pi
+Annotations:    ...
+Parallelism:    1
+Completions:    1
+Start Time:     Tue, 27 Aug 2019 14:19:38 +0200
+Completed At:   Tue, 27 Aug 2019 14:20:17 +0200
+Duration:       39s
+Pods Statuses:  0 Running / 1 Succeeded / 0 Failed
+Pod Template:
+  Labels:  controller-uid=f08d7c7d-c8c4-11e9-b7ce-42010a84026a
+           job-name=pi
+  Containers:
+   pi:
+    Image:      perl
+    Port:       <none>
+    Host Port:  <none>
+    Command:
+      perl
+      -Mbignum=bpi
+      -wle
+      print bpi(2000)
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Events:
+  Type    Reason            Age   From            Message
+  ----    ------            ----  ----            -------
+  Normal  SuccessfulCreate  51s   job-controller  Created pod: pi-vxccp
 ```
 
-Now the container-info container will be scheduled on a node that has 64Mi of 
-memory available and 0.25 cpu's. It’s when it comes to CPU limits that things 
-get interesting. CPU is considered a “compressible” resource. If your app starts 
-hitting your CPU limits, Kubernetes starts throttling your container. This means 
-the CPU will be artificially restricted, giving your app potentially worse 
-performance! However, it won’t be terminated or evicted. Unlike CPU resources, 
-memory cannot be compressed. Because there is no way to throttle memory usage, 
-if a container goes past its memory limit it will be terminated. If your pod is 
-managed by a Deployment, StatefulSet, DaemonSet, or another type of controller, 
-then the controller spins up a replacement.
+To view completed Pods of a Job, use `kubectl get pods`.
 
-## 2 - Limiting a namespace's resources
-
-Because sometimes same teams work on the same kubernetes cluster but in a 
-different namespace, it is important to limit people from taking more than their 
-fair share of the cluster.
-
-To prevent these scenarios, you can set up ResourceQuotas and LimitRanges at the 
-Namespace level.
-
-### ResourceQuotas
-
-After creating Namespaces, you can lock them down using ResourceQuotas. 
-ResourceQuotas are very powerful, but let’s just look at how you can use them to 
-restrict CPU and Memory resource usage.
-
-### Task 3: Describing a ResourceQuota
-
-Create the following file named `lab-15-resource-quota.yml`.
+To list all the Pods that belong to a Job in a machine readable form, you can use a command like this:
 
 ```
-apiVersion: v1
-kind: ResourceQuota
+pods=$(kubectl get pods --selector=job-name=pi --output=jsonpath='{.items[*].metadata.name}')
+echo $pods
+
+kubectl logs $pods
+
+3.1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679821480865132823066470938446095505822317253594081284811174502841027019385211055596446229489549303819644288109756659334461284756482337867831652712019091456485669234603486104543266482133936072602491412737245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094330572703657595919530921861173819326117931051185480744623799627495673518857527248912279381830119491298336733624406566430860213949463952247371907021798609437027705392171762931767523846748184676694051320005681271452635608277857713427577896091736371787214684409012249534301465495853710507922796892589235420199561121290219608640344181598136297747713099605187072113499999983729780499510597317328160963185950244594553469083026425223082533446850352619311881710100031378387528865875332083814206171776691473035982534904287554687311595628638823537875937519577818577805321712268066130019278766111959092164201989380952572010654858632788659361533818279682303019520353018529689957736225994138912497217752834791315155748572424541506959508295331168617278558890750983817546374649393192550604009277016711390098488240128583616035637076601047101819429555961989467678374494482553797747268471040475346462080466842590694912933136770289891521047521620569660240580381501935112533824300355876402474964732639141992726042699227967823547816360093417216412199245863150302861829745557067498385054945885869269956909272107975093029553211653449872027559602364806654991198818347977535663698074265425278625518184175746728909777727938000816470600161452491921732172147723501414419735685481613611573525521334757418494684385233239073941433345477624168625189835694855620992192221842725502542568876717904946016534668049886272327917860857843838279679766814541009538837863609506800642251252051173929848960841284886269456042419652850222106611863067442786220391949450471237137869609563643719172874677646575739624138908658326459958133904780275901
+```
+
+### Job Termination and Cleanup
+
+When a Job completes, no more Pods are created, but the Pods are not deleted 
+either. Keeping them around allows you to still view the logs of completed pods 
+to check for errors, warnings, or other diagnostic output. The job object also 
+remains after it is completed so that you can view its status. It is up to the 
+user to delete old jobs after noting their status. Delete the job with kubectl 
+(e.g. kubectl delete jobs/pi or kubectl delete -f ./lab-16-job.yml). When you delete 
+the job using kubectl, all the pods it created are deleted too.
+
+## Cronjob
+
+A Cron Job creates Jobs on a time-based schedule.
+
+One CronJob object is like one line of a crontab (cron table) file. It runs a 
+job periodically on a given schedule, written in Cron format.
+
+## Task 3: Creating a Cron Job
+
+Cron jobs require a config file. This example cron job config .spec file prints 
+the current time and a hello message every minute:
+
+Check out the following CronJob yaml:
+
+```
+apiVersion: batch/v1beta1
+kind: CronJob
 metadata:
-  name: "demo"
+  name: hello
 spec:
-  hard:
-    requests.cpu: "500m"
-    requests.memory: "100Mi"
-    limits.cpu: "700m"
-    limits.memory: "500Mi"
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: hello
+            image: busybox
+            args:
+            - /bin/sh
+            - -c
+            - date; echo Hello from the Kubernetes cluster
+          restartPolicy: OnFailure
 ```
 
-### Task 4: Apply this file to the cluster
+Run the example CronJob by using this command:
 
 ```
-kubectl apply -f lab-15-resource-quota.yml -n lab-15
+kubectl create -f https://k8s.io/examples/application/job/cronjob.yaml
 ```
 
-This will have created a ResourceQuota which on the namespace lab-15. If we try 
-and create a pod which exceeds the limits from the ResourceQuota we will get an 
-error. Edit the file from our limited pod into this file:
+After creating the cron job, get its status using this command:
 
 ```
-apiVersion: v1
-kind: Pod
-metadata:
-  name: container-info2
-spec:
-  containers:
-  - name: container-info
-    image: gluobe/container-info:blue
-    resources:
-      requests:
-        memory: "600Mi"
-        cpu: "1m"
-      limits:
-        memory: "1000Mi"
-        cpu: "1.5m"
-
+kubectl get cronjob hello
 ```
 
-### Task 5: Apply this pod to the namespace:
+As you can see from the results of the command, the cron job has not scheduled 
+or run any jobs yet. Watch for the job to be created in around one minute:
 
 ```
-kubectl apply -f lab-15-limited-pod.yml -n lab-15
-
----
-
-Error from server (Forbidden): error when creating "lab15-limited-pod.yml": pods "container-info" is forbidden: exceeded quota: demo, requested: limits.memory=1000Mi,requests.memory=600Mi, used: limits.memory=0,requests.memory=0, limited: limits.memory=500Mi,requests.memory=100Mi
+kubectl get jobs --watch
 ```
 
-### Task 6: Remove ResourceQuota from namespace
+The output is similar to this:
 
 ```
-kubectl delete resourcequota demo -n lab-15
-
----
-
-resourcequota "demo" deleted
+NAME               COMPLETIONS   DURATION   AGE
+hello-4111706356   0/1                      0s
+hello-4111706356   0/1   0s    0s
+hello-4111706356   1/1   5s    5s
 ```
 
-### LimitRange
-
-You can also create a LimitRange in your namespace. Unlike a Quota, which looks 
-at the namespace as a whole, a LimitRange applies to an individual container. 
-This can help prevent people from creating super tiny or super large containers 
-inside the namespace.
-
-### Task 7: Describing a LimitRange
-
-Create a file named `lab-15-limitrange.yml` with the following content:
+Now, find the pods that the last scheduled job created and view the standard output of one of the pods.
 
 ```
-apiVersion: v1
-kind: LimitRange
-metadata:
-  name: limit-mem-cpu-per-container
-spec:
-  limits:
-  - max:
-      cpu: "800m"
-      memory: "1Gi"
-    min:
-      cpu: "100m"
-      memory: "99Mi"
-    default:
-      cpu: "700m"
-      memory: "900Mi"
-    defaultRequest:
-      cpu: "110m"
-      memory: "111Mi"
-    type: Container
-
+# Replace "hello-4111706356" with the job name in your system
+pods=$(kubectl get pods --selector=job-name=hello-4111706356 --output=jsonpath={.items[].metadata.name})
 ```
 
-### Task 8: Apply this limitRange to our namespace:
+Show pod log:
 
 ```
-kubectl apply -f lab-15-limitrange.yml -n lab-15
+kubectl logs $pods
 
----
-
-limitrange/limit-mem-cpu-per-container created
+Tue Aug 27 12:58:07 UTC 2019
+Hello from the Kubernetes cluster
 ```
 
-As you can see the yaml file has 4 sections:
-
-The ***max section*** will set up the ***maximum limits*** that a container in 
-a Pod can set. The default section cannot be higher than this value. Likewise, 
-limits set on a container cannot be higher than this value.
-
-The ***min section*** sets up the ***minimum Requests*** that a container in a 
-Pod can set. The defaultRequest section cannot be lower than this value. 
-Likewise, requests set on a container cannot be lower than this value either.
-
-The ***default section*** sets up the ***default limits*** for a container in a 
-pod. If you set these values in the limitRange, any containers that don’t 
-explicitly set these themselves will get assigned the default values.
-
-The ***defaultRequest section*** sets up the ***default requests*** for a 
-container in a pod. If you set these values in the limitRange, any containers 
-that don’t explicitly set these themselves will get assigned the default values.
-
-### Task 9: Try and create a pod that exceeds these limits we will get an error.
+Delete the Cron Job
 
 ```
-kubectl apply -f lab-15-limited-pod.yml -n lab-15
-
----
-
-Error from server (Forbidden): error when creating "lab15-limited-pod.yml": pods "container-info" is forbidden: minimum cpu usage per Container is 100m, but request is 1m
-
+kubectl delete cronjob hello
 ```
 
-### Task 10: Clean up
+## Task 4: Cleaning up
 
-```
-kubectl delete namespace lab-15
-
----
-
-namespace "lab-15" deleted
-```
+Ensure that your resources are cleaned up, either by deleting them directly, or by deleting them using their YAML resource file.

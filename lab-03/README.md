@@ -1,4 +1,4 @@
-# Lab 03 - YAML
+# Lab 3 - YAML
 
 Although relatively easy in concept, this lab is a very important one when 
 working with Kubernetes.  In this lab we introduce YAML as a way to describe 

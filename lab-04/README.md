@@ -1,4 +1,4 @@
-# Lab 04 - Deployments
+# Lab 05 - Deployments
 
 Deploying pods is not something you normally do when working with Kubernetes,
 instead of interacting with pods directly you would use a higher lever

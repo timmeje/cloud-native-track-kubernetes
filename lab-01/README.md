@@ -1,4 +1,4 @@
-# Lab 01 - Nodes
+# Lab 1 - Nodes
 
 A node is a worker machine in Kubernetes, previously known as a minion. A node
 may be a VM or physical machine, depending on the cluster.  A node is where your 
